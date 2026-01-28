@@ -22,7 +22,6 @@ export function useAudioRecorder(): UseAudioRecorderReturn {
   const updateAudioLevels = useCallback(() => {
     if (!analyserRef.current || !dataArrayRef.current) return;
 
-    // @ts-expect-error - Uint8Array type compatibility issue with TS 5.6+
     analyserRef.current.getByteFrequencyData(dataArrayRef.current);
 
     // Calculate overall audio level
