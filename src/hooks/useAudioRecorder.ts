@@ -3,7 +3,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 interface UseAudioRecorderReturn {
   isRecording: boolean;
   audioLevel: number;
-  audioLevels: number[];
   startRecording: () => Promise<boolean>;
   stopRecording: () => void;
 }
@@ -11,15 +10,15 @@ interface UseAudioRecorderReturn {
 export function useAudioRecorder(): UseAudioRecorderReturn {
   const [isRecording, setIsRecording] = useState(false);
   const [audioLevel, setAudioLevel] = useState(0);
-  const [audioLevels, setAudioLevels] = useState<number[]>(Array(9).fill(0));
 
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const animationFrameRef = useRef<number | null>(null);
-  const dataArrayRef = useRef<Uint8Array | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const dataArrayRef = useRef<any>(null);
 
-  const updateAudioLevels = useCallback(() => {
+  const updateAudioLevel = useCallback(() => {
     if (!analyserRef.current || !dataArrayRef.current) return;
 
     analyserRef.current.getByteFrequencyData(dataArrayRef.current);
@@ -30,27 +29,7 @@ export function useAudioRecorder(): UseAudioRecorderReturn {
     const normalizedLevel = Math.min(average / 128, 1);
     setAudioLevel(normalizedLevel);
 
-    // Create 9 frequency bands for visualization
-    const bandSize = Math.floor(dataArrayRef.current.length / 9);
-    const levels: number[] = [];
-
-    for (let i = 0; i < 9; i++) {
-      let bandSum = 0;
-      for (let j = 0; j < bandSize; j++) {
-        bandSum += dataArrayRef.current[i * bandSize + j];
-      }
-      const bandAverage = bandSum / bandSize;
-      // Add some randomness and smooth the levels
-      const normalizedBand = Math.min(
-        (bandAverage / 128) * (0.8 + Math.random() * 0.4),
-        1,
-      );
-      levels.push(normalizedBand);
-    }
-
-    setAudioLevels(levels);
-
-    animationFrameRef.current = requestAnimationFrame(updateAudioLevels);
+    animationFrameRef.current = requestAnimationFrame(updateAudioLevel);
   }, []);
 
   const startRecording = useCallback(async (): Promise<boolean> => {
@@ -79,14 +58,14 @@ export function useAudioRecorder(): UseAudioRecorderReturn {
       dataArrayRef.current = new Uint8Array(analyser.frequencyBinCount);
 
       setIsRecording(true);
-      updateAudioLevels();
+      updateAudioLevel();
 
       return true;
     } catch (error) {
       console.error("Failed to start audio recording:", error);
       return false;
     }
-  }, [updateAudioLevels]);
+  }, [updateAudioLevel]);
 
   const stopRecording = useCallback(() => {
     // Stop animation frame
@@ -112,7 +91,6 @@ export function useAudioRecorder(): UseAudioRecorderReturn {
 
     setIsRecording(false);
     setAudioLevel(0);
-    setAudioLevels(Array(9).fill(0));
   }, []);
 
   // Cleanup on unmount
@@ -125,7 +103,6 @@ export function useAudioRecorder(): UseAudioRecorderReturn {
   return {
     isRecording,
     audioLevel,
-    audioLevels,
     startRecording,
     stopRecording,
   };

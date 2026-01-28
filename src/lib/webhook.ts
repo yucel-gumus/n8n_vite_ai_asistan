@@ -6,19 +6,14 @@ const WEBHOOK_URL =
 export interface WebhookPayload {
   transcript: string;
   timestamp: string;
-  duration: string;
 }
 
 export async function sendTranscriptToWebhook(
   transcript: string,
-  durationSeconds: number,
 ): Promise<{ success: boolean; error?: string }> {
-  const durationMinutes = Math.ceil(durationSeconds / 60);
-
   const payload: WebhookPayload = {
     transcript: transcript.trim(),
     timestamp: new Date().toISOString(),
-    duration: `${durationMinutes}m`,
   };
 
   try {
@@ -26,7 +21,7 @@ export async function sendTranscriptToWebhook(
       headers: {
         "Content-Type": "application/json",
       },
-      timeout: 60000, // 60 saniye - büyük transcript için yeterli
+      timeout: 60000,
       maxContentLength: Infinity,
       maxBodyLength: Infinity,
     });

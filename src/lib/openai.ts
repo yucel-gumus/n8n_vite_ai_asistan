@@ -21,8 +21,9 @@ export interface OpenAIResponse {
   };
 }
 
-const SYSTEM_PROMPT = `Sen "Enerwise AI" adlı akıllı bir toplantı asistanısın. 
-Kullanıcılar toplantı bittikten sonra seninle sesli sohbet ederek toplantı hakkında sorular sorar.
+const SYSTEM_PROMPT = `Sen "Enerwise AI" adlı akıllı bir toplantı asistanısın ve Selami Bey'in Kişisel Asistanısın. Konuşurken nazik ve profesyonel bir dil kullanırsın. 
+Selami Bey toplantı bittikten sonra seninle sesli sohbet ederek toplantı hakkında sorular sorar.
+Selami Bey sana nasılsın diye sorduğunda kısaca teşekkür ederim Selami Bey siz nasılsınız dersin.
 Sen toplantı transkriptini kullanarak yanıt verirsin.
 
 Kuralların:
@@ -46,7 +47,9 @@ export async function sendChatMessage(
     return "OpenAI API anahtarı yapılandırılmamış. Lütfen .env dosyasına VITE_OPENAI_API_KEY ekleyin.";
   }
 
-  const contextMessage = transcriptContext
+  const hasTranscript =
+    transcriptContext && transcriptContext.trim().length > 0;
+  const contextMessage = hasTranscript
     ? `\n\n--- TOPLANTI TRANSKRİPTİ ---\n${transcriptContext}\n--- TRANSKRİPT SONU ---`
     : "\n\n(Henüz toplantı transkripti bulunmuyor)";
 

@@ -1,43 +1,48 @@
 import { ChatMessage } from "@/lib/openai";
 import { create } from "zustand";
 
-export type RecordingState =
-  | "idle"
-  | "recording"
-  | "processing"
-  | "completed"
-  | "chatting";
+export interface MeetingData {
+  title: string;
+  date: string;
+  participants: string[];
+  content: string;
+}
+
+export type AppState = "idle" | "listening" | "chatting";
 
 export interface MeetingState {
-  // Recording state
-  recordingState: RecordingState;
-  startTime: Date | null;
-  duration: number;
+  // App state
+  appState: AppState;
 
-  // Transcript
-  transcriptBuffer: string;
-  interimTranscript: string;
+  // Meeting data from metin.json
+  meetingData: MeetingData | null;
+  isMeetingLoaded: boolean;
+
+  // User speech display (gösterim amaçlı)
+  currentUserSpeech: string;
+  isUserSpeaking: boolean;
+
+  // Accumulated transcript (birikmiş konuşma)
+  accumulatedTranscript: string;
 
   // Chat
   isChatOpen: boolean;
   chatMessages: ChatMessage[];
   isAssistantTyping: boolean;
   isAssistantSpeaking: boolean;
-  isUserSpeaking: boolean;
-  currentUserSpeech: string;
 
   // Permissions
   hasMicPermission: boolean;
   permissionError: string | null;
 
   // Actions
-  setRecordingState: (state: RecordingState) => void;
-  startRecording: () => void;
-  stopRecording: () => void;
-  startChatMode: () => void;
+  setAppState: (state: AppState) => void;
+  setMeetingData: (data: MeetingData) => void;
+  setMeetingLoaded: (loaded: boolean) => void;
 
-  appendTranscript: (text: string) => void;
-  setInterimTranscript: (text: string) => void;
+  setCurrentUserSpeech: (text: string) => void;
+  setUserSpeaking: (speaking: boolean) => void;
+  appendToTranscript: (text: string) => void;
   clearTranscript: () => void;
 
   openChat: () => void;
@@ -46,74 +51,55 @@ export interface MeetingState {
   clearChatMessages: () => void;
   setAssistantTyping: (typing: boolean) => void;
   setAssistantSpeaking: (speaking: boolean) => void;
-  setUserSpeaking: (speaking: boolean) => void;
-  setCurrentUserSpeech: (text: string) => void;
 
   setMicPermission: (hasPermission: boolean) => void;
   setPermissionError: (error: string | null) => void;
 
-  updateDuration: () => void;
   reset: () => void;
 }
 
-export const useMeetingStore = create<MeetingState>((set, get) => ({
+export const useMeetingStore = create<MeetingState>((set) => ({
   // Initial state
-  recordingState: "idle",
-  startTime: null,
-  duration: 0,
+  appState: "idle",
 
-  transcriptBuffer: "",
-  interimTranscript: "",
+  meetingData: null,
+  isMeetingLoaded: false,
+
+  currentUserSpeech: "",
+  isUserSpeaking: false,
+  accumulatedTranscript: "",
 
   isChatOpen: false,
   chatMessages: [],
   isAssistantTyping: false,
   isAssistantSpeaking: false,
-  isUserSpeaking: false,
-  currentUserSpeech: "",
 
   hasMicPermission: false,
   permissionError: null,
 
   // Actions
-  setRecordingState: (state) => set({ recordingState: state }),
+  setAppState: (state) => set({ appState: state }),
 
-  startRecording: () =>
-    set({
-      recordingState: "recording",
-      startTime: new Date(),
-      duration: 0,
-      transcriptBuffer: "",
-      interimTranscript: "",
-    }),
+  setMeetingData: (data) => set({ meetingData: data, isMeetingLoaded: true }),
 
-  stopRecording: () =>
-    set({
-      recordingState: "completed",
-      interimTranscript: "",
-    }),
+  setMeetingLoaded: (loaded) => set({ isMeetingLoaded: loaded }),
 
-  startChatMode: () =>
-    set({
-      recordingState: "chatting",
-      isChatOpen: true,
-      interimTranscript: "",
-    }),
+  setCurrentUserSpeech: (text) => set({ currentUserSpeech: text }),
 
-  appendTranscript: (text) =>
+  setUserSpeaking: (speaking) => set({ isUserSpeaking: speaking }),
+
+  appendToTranscript: (text) =>
     set((state) => ({
-      transcriptBuffer: state.transcriptBuffer
-        ? `${state.transcriptBuffer} ${text}`.trim()
+      accumulatedTranscript: state.accumulatedTranscript
+        ? `${state.accumulatedTranscript} ${text}`.trim()
         : text.trim(),
     })),
 
-  setInterimTranscript: (text) => set({ interimTranscript: text }),
+  clearTranscript: () => set({ accumulatedTranscript: "" }),
 
-  clearTranscript: () => set({ transcriptBuffer: "", interimTranscript: "" }),
+  openChat: () => set({ isChatOpen: true, appState: "chatting" }),
 
-  openChat: () => set({ isChatOpen: true }),
-
-  closeChat: () => set({ isChatOpen: false }),
+  closeChat: () => set({ isChatOpen: false, appState: "listening" }),
 
   addChatMessage: (message) =>
     set((state) => ({
@@ -126,35 +112,19 @@ export const useMeetingStore = create<MeetingState>((set, get) => ({
 
   setAssistantSpeaking: (speaking) => set({ isAssistantSpeaking: speaking }),
 
-  setUserSpeaking: (speaking) => set({ isUserSpeaking: speaking }),
-
-  setCurrentUserSpeech: (text) => set({ currentUserSpeech: text }),
-
   setMicPermission: (hasPermission) => set({ hasMicPermission: hasPermission }),
 
   setPermissionError: (error) => set({ permissionError: error }),
 
-  updateDuration: () => {
-    const { startTime } = get();
-    if (startTime) {
-      const now = new Date();
-      const seconds = Math.floor((now.getTime() - startTime.getTime()) / 1000);
-      set({ duration: seconds });
-    }
-  },
-
   reset: () =>
     set({
-      recordingState: "idle",
-      startTime: null,
-      duration: 0,
-      transcriptBuffer: "",
-      interimTranscript: "",
+      appState: "idle",
+      currentUserSpeech: "",
+      isUserSpeaking: false,
+      accumulatedTranscript: "",
       isChatOpen: false,
       chatMessages: [],
       isAssistantTyping: false,
       isAssistantSpeaking: false,
-      isUserSpeaking: false,
-      currentUserSpeech: "",
     }),
 }));

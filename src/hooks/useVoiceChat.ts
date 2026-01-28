@@ -29,13 +29,8 @@ interface SpeechRecognition extends EventTarget {
   onerror: ((event: SpeechRecognitionErrorEvent) => void) | null;
   onend: (() => void) | null;
   onstart: (() => void) | null;
-}
-
-declare global {
-  interface Window {
-    SpeechRecognition: new () => SpeechRecognition;
-    webkitSpeechRecognition: new () => SpeechRecognition;
-  }
+  onaudiostart?: (() => void) | null;
+  onspeechend?: (() => void) | null;
 }
 
 const TERMINATION_WORDS = [
@@ -45,14 +40,23 @@ const TERMINATION_WORDS = [
   "toplantiyi bitir",
 ];
 
+// 3 saniye sessizlik sonrası AI yanıt verir
+const SILENCE_TIMEOUT = 3000;
+
 export function useVoiceChat() {
   const [isListening, setIsListening] = useState(false);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const isProcessingRef = useRef(false);
+  const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const accumulatedTextRef = useRef<string>("");
+  const lastSpeechTimeRef = useRef<number>(Date.now());
+  const meetingDataRef = useRef<typeof meetingData>(null);
+  const chatMessagesRef = useRef<typeof chatMessages>([]);
 
   const {
-    transcriptBuffer,
+    meetingData,
     chatMessages,
+    isAssistantSpeaking,
     addChatMessage,
     setAssistantTyping,
     setAssistantSpeaking,
@@ -61,17 +65,49 @@ export function useVoiceChat() {
     setPermissionError,
   } = useMeetingStore();
 
+  // meetingData değiştiğinde ref'i güncelle (stale closure önleme)
+  meetingDataRef.current = meetingData;
+  chatMessagesRef.current = chatMessages;
+
   const checkTermination = useCallback((text: string): boolean => {
     const normalizedText = text.toLowerCase().trim();
     return TERMINATION_WORDS.some((word) => normalizedText.includes(word));
   }, []);
 
+  // Silence timer'ı temizle
+  const clearSilenceTimer = useCallback(() => {
+    if (silenceTimerRef.current) {
+      clearTimeout(silenceTimerRef.current);
+      silenceTimerRef.current = null;
+    }
+  }, []);
+
+  // Silence timer'ı başlat - 3 saniye sessizlik sonrası AI yanıtlar
+  const startSilenceTimer = useCallback(() => {
+    clearSilenceTimer();
+
+    silenceTimerRef.current = setTimeout(() => {
+      const textToProcess = accumulatedTextRef.current.trim();
+      if (textToProcess && !isProcessingRef.current) {
+        console.log("3 saniye sessizlik - AI yanıt veriyor:", textToProcess);
+        processUserSpeechInternal(textToProcess);
+        accumulatedTextRef.current = "";
+      }
+    }, SILENCE_TIMEOUT);
+  }, []);
+
   const speakGreeting = useCallback(async () => {
     const greeting =
-      "Merhaba! Ben EnerwiseAi . Toplantı hakkında sorularınız varsa yanıtlamaktan memnuniyet duyarım.";
+      "Merhaba! Ben EnerwiseAi. Toplantı hakkında sorularınız varsa yanıtlamaktan memnuniyet duyarım.";
 
     addChatMessage({ role: "assistant", content: greeting });
     setAssistantSpeaking(true);
+
+    // AI konuşurken mikrofonu durdur
+    if (recognitionRef.current) {
+      recognitionRef.current.abort();
+      setIsListening(false);
+    }
 
     try {
       const audioData = await textToSpeech(greeting);
@@ -91,6 +127,12 @@ export function useVoiceChat() {
     addChatMessage({ role: "assistant", content: farewell });
     setAssistantSpeaking(true);
 
+    // AI konuşurken mikrofonu durdur
+    if (recognitionRef.current) {
+      recognitionRef.current.abort();
+      setIsListening(false);
+    }
+
     try {
       const audioData = await textToSpeech(farewell);
       if (audioData) {
@@ -103,20 +145,27 @@ export function useVoiceChat() {
     }
   }, [addChatMessage, setAssistantSpeaking]);
 
-  const processUserSpeech = useCallback(
+  // Internal process function
+  const processUserSpeechInternal = useCallback(
     async (userText: string) => {
       if (isProcessingRef.current || !userText.trim()) return;
 
-      // Termination komutu ise işleme - AI'a sormadan sadece user mesajı ekle
-      // Farewell VoiceChatInterface tarafından söylenecek
+      // Termination komutu kontrolü
       if (checkTermination(userText)) {
         addChatMessage({ role: "user", content: userText });
         setCurrentUserSpeech("");
         setUserSpeaking(false);
-        return; // AI'a sorma, çakışma olmasın
+        return;
       }
 
       isProcessingRef.current = true;
+      clearSilenceTimer();
+
+      // Dinlemeyi durdur - AI konuşacak
+      if (recognitionRef.current) {
+        recognitionRef.current.abort();
+        setIsListening(false);
+      }
 
       // Add user message
       addChatMessage({ role: "user", content: userText });
@@ -127,7 +176,11 @@ export function useVoiceChat() {
       setAssistantTyping(true);
 
       try {
-        const conversationHistory = chatMessages.map((msg) => ({
+        // Ref'lerden güncel değerleri al (stale closure önleme)
+        const currentMeetingData = meetingDataRef.current;
+        const currentChatMessages = chatMessagesRef.current;
+
+        const conversationHistory = currentChatMessages.map((msg) => ({
           role: msg.role,
           content: msg.content,
         })) as ChatMessage[];
@@ -137,64 +190,97 @@ export function useVoiceChat() {
 
         const result = await getAIResponseAndSpeak(
           userText,
-          transcriptBuffer,
+          currentMeetingData?.content || "",
           conversationHistory,
         );
         addChatMessage({ role: "assistant", content: result.text });
+
+        // AI konuşması bittikten sonra tekrar dinlemeye başla
+        setAssistantSpeaking(false);
+        isProcessingRef.current = false;
+
+        // Kısa bir gecikme sonrası dinlemeyi tekrar başlat
+        setTimeout(() => {
+          if (!isProcessingRef.current) {
+            startRecognition();
+          }
+        }, 500);
       } catch (error) {
         console.error("Error processing speech:", error);
         addChatMessage({
           role: "assistant",
           content: "Üzgünüm, bir hata oluştu.",
         });
-      } finally {
         setAssistantTyping(false);
         setAssistantSpeaking(false);
         isProcessingRef.current = false;
+
+        // Hata durumunda da dinlemeyi tekrar başlat
+        setTimeout(() => {
+          startRecognition();
+        }, 500);
       }
     },
     [
       addChatMessage,
-      chatMessages,
-      transcriptBuffer,
       setAssistantTyping,
       setAssistantSpeaking,
       setCurrentUserSpeech,
       setUserSpeaking,
       checkTermination,
+      clearSilenceTimer,
     ],
   );
 
-  const startListening = useCallback(async (): Promise<boolean> => {
+  // Recognition başlatma fonksiyonu
+  const startRecognition = useCallback(() => {
     const SpeechRecognitionAPI =
-      window.SpeechRecognition || window.webkitSpeechRecognition;
+      (
+        window as unknown as {
+          SpeechRecognition?: new () => SpeechRecognition;
+          webkitSpeechRecognition?: new () => SpeechRecognition;
+        }
+      ).SpeechRecognition ||
+      (
+        window as unknown as {
+          webkitSpeechRecognition?: new () => SpeechRecognition;
+        }
+      ).webkitSpeechRecognition;
 
     if (!SpeechRecognitionAPI) {
-      setPermissionError("Tarayıcınız ses tanıma özelliğini desteklemiyor.");
-      return false;
+      return;
     }
 
-    try {
-      await navigator.mediaDevices.getUserMedia({ audio: true });
-    } catch {
-      setPermissionError("Mikrofon erişimi reddedildi.");
-      return false;
+    // Eğer AI konuşuyorsa başlatma
+    if (isAssistantSpeaking || isProcessingRef.current) {
+      return;
     }
 
     if (recognitionRef.current) {
-      recognitionRef.current.abort();
+      try {
+        recognitionRef.current.abort();
+      } catch {
+        // Ignore
+      }
     }
 
     const recognition = new SpeechRecognitionAPI();
     recognition.continuous = true;
     recognition.interimResults = true;
     recognition.lang = "tr-TR";
+    recognition.maxAlternatives = 3;
 
     recognition.onstart = () => {
+      console.log("Voice recognition started");
       setIsListening(true);
     };
 
     recognition.onresult = (event: SpeechRecognitionEvent) => {
+      // AI konuşuyorsa sonuçları işleme
+      if (isAssistantSpeaking || isProcessingRef.current) {
+        return;
+      }
+
       let interimText = "";
       let finalText = "";
 
@@ -209,33 +295,78 @@ export function useVoiceChat() {
         }
       }
 
+      // Konuşma algılandı - timer'ı sıfırla
+      lastSpeechTimeRef.current = Date.now();
+
       if (interimText) {
-        setCurrentUserSpeech(interimText);
+        setCurrentUserSpeech(accumulatedTextRef.current + " " + interimText);
         setUserSpeaking(true);
+        clearSilenceTimer();
       }
 
       if (finalText.trim()) {
-        setCurrentUserSpeech(finalText);
-        processUserSpeech(finalText);
+        accumulatedTextRef.current = (
+          accumulatedTextRef.current +
+          " " +
+          finalText
+        ).trim();
+        setCurrentUserSpeech(accumulatedTextRef.current);
+        setUserSpeaking(true);
+
+        // 3 saniye sessizlik timer'ı başlat
+        startSilenceTimer();
       }
     };
 
     recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
       console.error("Voice chat recognition error:", event.error);
+
       if (event.error === "not-allowed") {
         setPermissionError("Mikrofon erişimi reddedildi.");
+        return;
+      }
+
+      // Diğer hatalarda otomatik yeniden başlat
+      if (
+        event.error !== "aborted" &&
+        !isProcessingRef.current &&
+        !isAssistantSpeaking
+      ) {
+        setTimeout(() => {
+          if (
+            recognitionRef.current &&
+            !isProcessingRef.current &&
+            !isAssistantSpeaking
+          ) {
+            try {
+              recognitionRef.current.start();
+            } catch {
+              // Ignore
+            }
+          }
+        }, 100);
       }
     };
 
     recognition.onend = () => {
+      console.log("Voice recognition ended");
       setIsListening(false);
-      // Auto-restart if still in chat mode
-      if (recognitionRef.current && !isProcessingRef.current) {
-        try {
-          recognition.start();
-        } catch {
-          // Ignore
-        }
+
+      // AI konuşmuyorsa ve işlem yoksa otomatik yeniden başlat
+      if (
+        !isProcessingRef.current &&
+        !isAssistantSpeaking &&
+        recognitionRef.current
+      ) {
+        setTimeout(() => {
+          if (!isProcessingRef.current && !isAssistantSpeaking) {
+            try {
+              recognition.start();
+            } catch {
+              // Ignore - might already be started
+            }
+          }
+        }, 100);
       }
     };
 
@@ -243,26 +374,66 @@ export function useVoiceChat() {
 
     try {
       recognition.start();
-      return true;
-    } catch {
-      return false;
+    } catch (error) {
+      console.error("Failed to start recognition:", error);
     }
   }, [
-    setPermissionError,
+    isAssistantSpeaking,
     setCurrentUserSpeech,
     setUserSpeaking,
-    processUserSpeech,
+    setPermissionError,
+    clearSilenceTimer,
+    startSilenceTimer,
   ]);
 
+  const startListening = useCallback(async (): Promise<boolean> => {
+    const SpeechRecognitionAPI =
+      (
+        window as unknown as {
+          SpeechRecognition?: new () => SpeechRecognition;
+          webkitSpeechRecognition?: new () => SpeechRecognition;
+        }
+      ).SpeechRecognition ||
+      (
+        window as unknown as {
+          webkitSpeechRecognition?: new () => SpeechRecognition;
+        }
+      ).webkitSpeechRecognition;
+
+    if (!SpeechRecognitionAPI) {
+      setPermissionError("Tarayıcınız ses tanıma özelliğini desteklemiyor.");
+      return false;
+    }
+
+    try {
+      await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch {
+      setPermissionError("Mikrofon erişimi reddedildi.");
+      return false;
+    }
+
+    // Reset state
+    accumulatedTextRef.current = "";
+    isProcessingRef.current = false;
+
+    startRecognition();
+    return true;
+  }, [setPermissionError, startRecognition]);
+
   const stopListening = useCallback(() => {
+    clearSilenceTimer();
+    accumulatedTextRef.current = "";
+    isProcessingRef.current = true; // Yeniden başlamayı engelle
+
     if (recognitionRef.current) {
       recognitionRef.current.abort();
       recognitionRef.current = null;
     }
+
     setIsListening(false);
     setUserSpeaking(false);
     setCurrentUserSpeech("");
-  }, [setUserSpeaking, setCurrentUserSpeech]);
+  }, [setUserSpeaking, setCurrentUserSpeech, clearSilenceTimer]);
 
   return {
     isListening,
