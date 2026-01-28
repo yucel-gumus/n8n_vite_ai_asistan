@@ -17,15 +17,16 @@ export function useAudioRecorder(): UseAudioRecorderReturn {
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const animationFrameRef = useRef<number | null>(null);
-  const dataArrayRef = useRef<Uint8Array<ArrayBuffer> | null>(null);
+  const dataArrayRef = useRef<Uint8Array | null>(null);
 
   const updateAudioLevels = useCallback(() => {
     if (!analyserRef.current || !dataArrayRef.current) return;
 
+    // @ts-expect-error - Uint8Array type compatibility issue with TS 5.6+
     analyserRef.current.getByteFrequencyData(dataArrayRef.current);
 
     // Calculate overall audio level
-    const sum = dataArrayRef.current.reduce((a, b) => a + b, 0);
+    const sum = dataArrayRef.current.reduce((a: number, b: number) => a + b, 0);
     const average = sum / dataArrayRef.current.length;
     const normalizedLevel = Math.min(average / 128, 1);
     setAudioLevel(normalizedLevel);
