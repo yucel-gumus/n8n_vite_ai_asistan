@@ -1,42 +1,45 @@
-import axios from 'axios'
+import axios from "axios";
 
-const WEBHOOK_URL = 'https://yucelgumus61.app.n8n.cloud/webhook-test/ses-analiz'
+const WEBHOOK_URL =
+  "https://yucelgumus61.app.n8n.cloud/webhook-test/ses-analiz";
 
 export interface WebhookPayload {
-  transcript: string
-  timestamp: string
-  duration: string
+  transcript: string;
+  timestamp: string;
+  duration: string;
 }
 
 export async function sendTranscriptToWebhook(
   transcript: string,
-  durationSeconds: number
+  durationSeconds: number,
 ): Promise<{ success: boolean; error?: string }> {
-  const durationMinutes = Math.ceil(durationSeconds / 60)
-  
+  const durationMinutes = Math.ceil(durationSeconds / 60);
+
   const payload: WebhookPayload = {
     transcript: transcript.trim(),
     timestamp: new Date().toISOString(),
-    duration: `${durationMinutes}m`
-  }
+    duration: `${durationMinutes}m`,
+  };
 
   try {
     await axios.post(WEBHOOK_URL, payload, {
       headers: {
-        'Content-Type': 'application/json'
+        "Content-Type": "application/json",
       },
-      timeout: 30000
-    })
+      timeout: 60000, // 60 saniye - büyük transcript için yeterli
+      maxContentLength: Infinity,
+      maxBodyLength: Infinity,
+    });
 
-    return { success: true }
+    return { success: true };
   } catch (error) {
     if (axios.isAxiosError(error)) {
-      console.error('Webhook error:', error.response?.data || error.message)
-      return { 
-        success: false, 
-        error: error.response?.data?.message || error.message 
-      }
+      console.error("Webhook error:", error.response?.data || error.message);
+      return {
+        success: false,
+        error: error.response?.data?.message || error.message,
+      };
     }
-    return { success: false, error: 'Bilinmeyen bir hata oluştu' }
+    return { success: false, error: "Bilinmeyen bir hata oluştu" };
   }
 }

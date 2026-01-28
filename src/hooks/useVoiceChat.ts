@@ -68,7 +68,7 @@ export function useVoiceChat() {
 
   const speakGreeting = useCallback(async () => {
     const greeting =
-      "Merhaba! Toplantı sona erdi. Toplantı hakkında sorularınız varsa yanıtlamaktan memnuniyet duyarım.";
+      "Merhaba! Ben EnerwiseAi . Toplantı hakkında sorularınız varsa yanıtlamaktan memnuniyet duyarım.";
 
     addChatMessage({ role: "assistant", content: greeting });
     setAssistantSpeaking(true);
@@ -106,6 +106,15 @@ export function useVoiceChat() {
   const processUserSpeech = useCallback(
     async (userText: string) => {
       if (isProcessingRef.current || !userText.trim()) return;
+
+      // Termination komutu ise işleme - AI'a sormadan sadece user mesajı ekle
+      // Farewell VoiceChatInterface tarafından söylenecek
+      if (checkTermination(userText)) {
+        addChatMessage({ role: "user", content: userText });
+        setCurrentUserSpeech("");
+        setUserSpeaking(false);
+        return; // AI'a sorma, çakışma olmasın
+      }
 
       isProcessingRef.current = true;
 
@@ -152,6 +161,7 @@ export function useVoiceChat() {
       setAssistantSpeaking,
       setCurrentUserSpeech,
       setUserSpeaking,
+      checkTermination,
     ],
   );
 
