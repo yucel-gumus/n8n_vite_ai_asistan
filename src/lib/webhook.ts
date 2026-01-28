@@ -1,7 +1,6 @@
 import axios from "axios";
 
-const WEBHOOK_URL =
-  "https://yucelgumus61.app.n8n.cloud/webhook-test/ses-analiz";
+const WEBHOOK_URL = "https://yucelgumus61.app.n8n.cloud/webhook/ses-analiz";
 
 export interface WebhookPayload {
   transcript: string;

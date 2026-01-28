@@ -62,14 +62,6 @@ export function VoiceChatInterface({
     };
   }, [open, speakGreeting, startListening, stopListening]);
 
-  // Check for termination command in messages
-  useEffect(() => {
-    const lastMessage = chatMessages[chatMessages.length - 1];
-    if (lastMessage?.role === "user" && checkTermination(lastMessage.content)) {
-      handleEndChat();
-    }
-  }, [chatMessages, checkTermination]);
-
   const handleEndChat = useCallback(async () => {
     stopListening();
     await speakFarewell();
@@ -77,6 +69,15 @@ export function VoiceChatInterface({
       onEndChat();
     }, 1500);
   }, [stopListening, speakFarewell, onEndChat]);
+
+  // Check for termination command in messages
+  useEffect(() => {
+    const lastMessage = chatMessages[chatMessages.length - 1];
+    if (lastMessage?.role === "user" && checkTermination(lastMessage.content)) {
+      console.log("Termination word detected:", lastMessage.content);
+      handleEndChat();
+    }
+  }, [chatMessages, checkTermination, handleEndChat]);
 
   const toggleListening = async () => {
     if (isListening) {

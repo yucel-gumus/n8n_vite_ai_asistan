@@ -34,10 +34,12 @@ interface SpeechRecognition extends EventTarget {
 }
 
 const TERMINATION_WORDS = [
-  "görüşürüz",
-  "gorusuruz",
-  "toplantıyı bitir",
-  "toplantiyi bitir",
+  "İyi Günler Dilerim",
+  "Toplantı özetini Misafirlerimize gönder",
+  "Misafirlerimize toplantı notlarını gönder",
+  "Gönder",
+  "Sunum notunu Misafirlerimize gönderebilir misin",
+  "Sunum özetini Misafirlerimize gönderebilir misin",
 ];
 
 // 3 saniye sessizlik sonrası AI yanıt verir
@@ -71,7 +73,9 @@ export function useVoiceChat() {
 
   const checkTermination = useCallback((text: string): boolean => {
     const normalizedText = text.toLowerCase().trim();
-    return TERMINATION_WORDS.some((word) => normalizedText.includes(word));
+    return TERMINATION_WORDS.some((word) =>
+      normalizedText.includes(word.toLowerCase()),
+    );
   }, []);
 
   // Silence timer'ı temizle
@@ -97,8 +101,7 @@ export function useVoiceChat() {
   }, []);
 
   const speakGreeting = useCallback(async () => {
-    const greeting =
-      "Merhaba! Ben EnerwiseAi. Toplantı hakkında sorularınız varsa yanıtlamaktan memnuniyet duyarım.";
+    const greeting = "Merhaba! Ben Enerwise. Selami Bey nasılsınız?";
 
     addChatMessage({ role: "assistant", content: greeting });
     setAssistantSpeaking(true);
@@ -122,7 +125,8 @@ export function useVoiceChat() {
   }, [addChatMessage, setAssistantSpeaking]);
 
   const speakFarewell = useCallback(async () => {
-    const farewell = "Toplantı notlarını hazırlıyorum, iyi günler!";
+    const farewell =
+      "Toplantı notlarını hazırlayıp Misafirlerimize gönderiyorum. İyi günler dilerim Selami Bey.";
 
     addChatMessage({ role: "assistant", content: farewell });
     setAssistantSpeaking(true);

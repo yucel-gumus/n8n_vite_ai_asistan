@@ -306,12 +306,6 @@ export function MeetingView() {
                     <h3 className="font-semibold text-foreground">
                       {meetingData.title || "Toplantı İçeriği"}
                     </h3>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      {(meetingData.content?.length || 0).toLocaleString()}{" "}
-                      karakter
-                      {meetingData.participants &&
-                        ` • ${meetingData.participants.length} katılımcı`}
-                    </p>
                   </div>
                 </div>
               </div>
